@@ -4,4 +4,6 @@ O **Chatzinho** é uma aplicação de mensagens em tempo real focada em privacid
 
 ---
 
+usando: React, NextJs, Tailwind, ElysiaJs, TanStack
+
 Feito com ❤️ por Gabriel Ragonha
