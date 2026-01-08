@@ -1,13 +1,26 @@
 "use client";
 
+import ErrorMessage from "@/components/error-message";
 import { useUsername } from "@/hooks/use-username";
 import { client } from "@/lib/client";
 import { useMutation } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
-export default function Home() {
+const Page = () => {
+  return (
+    <Suspense>
+      <Lobby />
+    </Suspense>
+  );
+};
+
+function Lobby() {
   const { username } = useUsername();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const wasDestroyed = searchParams.get("destruida") === "true";
+  const error = searchParams.get("erro");
 
   const { mutate: createRoom } = useMutation({
     mutationFn: async () => {
@@ -22,6 +35,27 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
+        {wasDestroyed && (
+          <ErrorMessage
+            title="SALA DESTRUÍDA"
+            message="Todas mensagens foram permanentemente deletadas!"
+          />
+        )}
+
+        {error === "sala-nao-encontrada" && (
+          <ErrorMessage
+            title="SALA NÃO ENCONTRADA"
+            message="A sala expirou ou não existe!"
+          />
+        )}
+
+        {error === "sala-cheia" && (
+          <ErrorMessage
+            title="SALA CHEIA"
+            message="Essa sala chegou à capacidade máxima!"
+          />
+        )}
+
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold tracking-tight text-green-500">
             {">"}chatzinho_privado
@@ -57,3 +91,5 @@ export default function Home() {
     </main>
   );
 }
+
+export default Page;
