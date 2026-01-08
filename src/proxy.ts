@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 
 export const proxy = async (req: NextRequest) => {
   const pathname = req.nextUrl.pathname;
-  const roomMatch = pathname.match(/^\/room\/([^/]+)$/);
+  const roomMatch = pathname.match(/^\/sala\/([^/]+)$/);
 
   if (!roomMatch) return NextResponse.redirect(new URL("/", req.url));
 
@@ -47,5 +47,5 @@ export const proxy = async (req: NextRequest) => {
 };
 
 export const config = {
-  matcher: "/room/:path*",
+  matcher: "/sala/:path*",
 };
