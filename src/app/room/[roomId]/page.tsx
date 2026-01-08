@@ -1,7 +1,12 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { useRef, useState } from "react";
+import { useUsername } from "@/hooks/use-username";
+import { client } from "@/lib/client";
+import { useRealtime } from "@/lib/realtime-client";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { format } from "date-fns";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 function formatTimeRemaining(seconds: number) {
   const mins = Math.floor(seconds / 60);
@@ -16,8 +21,86 @@ const Page = () => {
 
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const router = useRouter();
   const params = useParams();
   const roomId = params.roomId as string;
+  const { username } = useUsername();
+
+  const { data: messages, refetch } = useQuery({
+    queryKey: ["messages", roomId],
+    queryFn: async () => {
+      const res = await client.messages.get({ query: { roomId } });
+      return res.data;
+    },
+  });
+
+  const { data: ttlData } = useQuery({
+    queryKey: ["ttl", roomId],
+    queryFn: async () => {
+      const res = await client.room.ttl.get({
+        query: { roomId },
+      });
+
+      return res.data;
+    },
+  });
+
+  useEffect(() => {
+    if (ttlData?.ttl !== undefined) setTimeRemaining(ttlData.ttl);
+  }, [ttlData]);
+
+  useEffect(() => {
+    if (timeRemaining === null || timeRemaining < 0) return;
+
+    if (timeRemaining === 0) {
+      router.push("/?destruida=true");
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timeRemaining, router]);
+
+  useRealtime({
+    channels: [roomId],
+    events: ["chat.message", "chat.destroy"],
+    onData: ({ event }) => {
+      if (event === "chat.message") {
+        refetch();
+      }
+
+      if (event === "chat.destroy") {
+        router.push("/?destruida=true");
+      }
+    },
+  });
+
+  const { mutate: destroyRoom } = useMutation({
+    mutationFn: async () => {
+      await client.room.delete(null, { query: { roomId } });
+    },
+  });
+
+  const { mutate: sendMessage, isPending } = useMutation({
+    mutationFn: async ({ text }: { text: string }) => {
+      await client.messages.post(
+        { sender: username, text },
+        { query: { roomId } }
+      );
+
+      setInput("");
+    },
+  });
 
   const copyLink = () => {
     const url = window.location.href;
@@ -66,13 +149,48 @@ const Page = () => {
           </div>
         </div>
 
-        <button className="text-xs bg-zinc-800 hover:bg-red-600 px-3 py-1.5 rounded text-zinc-400 hover:text-white font-bold transition-all group flex items-center gap-2 disabled:opacity-50">
+        <button
+          onClick={() => destroyRoom()}
+          className="text-xs bg-zinc-800 hover:bg-red-600 px-3 py-1.5 rounded text-zinc-400 hover:text-white font-bold transition-all group flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+        >
           <span className="group-hover:animate-pulse">🧨</span>
           DESTRUIR AGORA
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin"></div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
+        {messages?.messages.length === 0 && (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-zinc-600 text-sm font-mono">
+              Sem mensagens ainda, começe a conversar!
+            </p>
+          </div>
+        )}
+
+        {messages?.messages.map(({ id, sender, timestamp, text }) => (
+          <div key={id} className="flex flex-col items-start">
+            <div className="max-w-[80%] group">
+              <div className="flex items-baseline gap-3 mb-1">
+                <span
+                  className={`text-xs font-bold ${
+                    sender === username ? "text-green-500" : "text-blue-500"
+                  }`}
+                >
+                  {sender === username ? "VOCÊ" : sender}
+                </span>
+
+                <span className="text-[10px] text-zinc-600">
+                  {format(timestamp, "HH:mm")}
+                </span>
+              </div>
+
+              <p className="text-sm text-zinc-300 leading-relaxed break-all">
+                {text}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
 
       <div className="p-4 border-t border-zinc-800 bg-zinc-900/30">
         <div className="flex gap-4">
@@ -87,6 +205,7 @@ const Page = () => {
               value={input}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && input.trim()) {
+                  sendMessage({ text: input });
                   inputRef.current?.focus();
                 }
               }}
@@ -96,7 +215,14 @@ const Page = () => {
             />
           </div>
 
-          <button className="bg-zinc-800 text-zinc-400 px-6 text-sm font-bold hover:text-zinc-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer rounded-xl">
+          <button
+            onClick={() => {
+              sendMessage({ text: input });
+              inputRef.current?.focus();
+            }}
+            disabled={!input.trim() || isPending}
+            className="bg-zinc-800 text-zinc-400 px-6 text-sm font-bold hover:text-zinc-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer rounded-xl"
+          >
             ENVIAR
           </button>
         </div>
