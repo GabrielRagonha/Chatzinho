@@ -39,7 +39,7 @@ export default function Home() {
       const res = await client.room.create.post();
 
       if (res.status === 200) {
-        router.push(`/room/${res.data?.roomId}`);
+        router.push(`/sala/${res.data?.roomId}`);
       }
     },
   });
