@@ -1,0 +1,51 @@
+import { NextRequest, NextResponse } from "next/server";
+import { redis } from "./lib/redis";
+import { nanoid } from "nanoid";
+
+export const proxy = async (req: NextRequest) => {
+  const pathname = req.nextUrl.pathname;
+  const roomMatch = pathname.match(/^\/sala\/([^/]+)$/);
+
+  if (!roomMatch) return NextResponse.redirect(new URL("/", req.url));
+
+  const roomId = roomMatch[1];
+
+  const meta = await redis.hgetall<{ connected: string[]; createdAt: number }>(
+    `meta:${roomId}`
+  );
+
+  if (!meta)
+    return NextResponse.redirect(
+      new URL("/?erro=sala-nao-encontrada", req.url)
+    );
+
+  const existingToken = req.cookies.get("X-Auth-Token")?.value;
+
+  if (existingToken && meta.connected.includes(existingToken)) {
+    return NextResponse.next();
+  }
+
+  if (meta.connected.length >= 2) {
+    return NextResponse.redirect(new URL("/?erro=sala-cheia", req.url));
+  }
+
+  const response = NextResponse.next();
+  const token = nanoid();
+
+  response.cookies.set("X-Auth-Token", token, {
+    path: "/",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+  });
+
+  await redis.hset(`meta:${roomId}`, {
+    connected: [...meta.connected, token],
+  });
+
+  return response;
+};
+
+export const config = {
+  matcher: "/sala/:path*",
+};

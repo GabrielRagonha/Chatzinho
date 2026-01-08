@@ -1,45 +1,33 @@
 "use client";
 
-import { ANIMALS, STORAGE_KEY } from "@/constants";
+import ErrorMessage from "@/components/error-message";
+import { useUsername } from "@/hooks/use-username";
 import { client } from "@/lib/client";
 import { useMutation } from "@tanstack/react-query";
-import { nanoid } from "nanoid";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
-const generateUsername = () => {
-  const word = ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
-
-  return `${word}-anônimo-${nanoid(5)}`;
+const Page = () => {
+  return (
+    <Suspense>
+      <Lobby />
+    </Suspense>
+  );
 };
 
-export default function Home() {
-  const [username, setUsername] = useState("");
+function Lobby() {
+  const { username } = useUsername();
   const router = useRouter();
-
-  useEffect(() => {
-    const main = () => {
-      const stored = localStorage.getItem(STORAGE_KEY);
-
-      if (stored) {
-        setUsername(stored);
-        return;
-      }
-
-      const generated = generateUsername();
-      localStorage.setItem(STORAGE_KEY, generated);
-      setUsername(generated);
-    };
-
-    main();
-  }, []);
+  const searchParams = useSearchParams();
+  const wasDestroyed = searchParams.get("destruida") === "true";
+  const error = searchParams.get("erro");
 
   const { mutate: createRoom } = useMutation({
     mutationFn: async () => {
       const res = await client.room.create.post();
 
       if (res.status === 200) {
-        router.push(`/room/${res.data?.roomId}`);
+        router.push(`/sala/${res.data?.roomId}`);
       }
     },
   });
@@ -47,6 +35,27 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
+        {wasDestroyed && (
+          <ErrorMessage
+            title="SALA DESTRUÍDA"
+            message="Todas mensagens foram permanentemente deletadas!"
+          />
+        )}
+
+        {error === "sala-nao-encontrada" && (
+          <ErrorMessage
+            title="SALA NÃO ENCONTRADA"
+            message="A sala expirou ou não existe!"
+          />
+        )}
+
+        {error === "sala-cheia" && (
+          <ErrorMessage
+            title="SALA CHEIA"
+            message="Essa sala chegou à capacidade máxima!"
+          />
+        )}
+
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold tracking-tight text-green-500">
             {">"}chatzinho_privado
@@ -82,3 +91,5 @@ export default function Home() {
     </main>
   );
 }
+
+export default Page;
